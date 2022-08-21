@@ -26,6 +26,8 @@ source-repository head
 library
   exposed-modules:
       Lib
+      Liftable
+      Types
   other-modules:
       Paths_webforth
   hs-source-dirs:
@@ -76,6 +78,7 @@ library
     , bytestring
     , containers
     , lens
+    , mtl
     , raw-strings-qq
     , text
     , utf8-string
@@ -133,6 +136,7 @@ executable webforth-exe
     , bytestring
     , containers
     , lens
+    , mtl
     , raw-strings-qq
     , text
     , utf8-string
@@ -192,6 +196,7 @@ test-suite webforth-test
     , bytestring
     , containers
     , lens
+    , mtl
     , raw-strings-qq
     , text
     , utf8-string

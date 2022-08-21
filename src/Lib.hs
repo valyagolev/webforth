@@ -6,74 +6,89 @@ module Lib
   )
 where
 
+import Control.Applicative (Applicative (liftA2))
+import Control.Lens
+import Control.Monad.State.Strict (StateT (runStateT), liftIO)
 import Data.List (singleton)
 import Data.String (IsString)
+import Data.Tuple (swap)
 import Debug.Trace
+import Liftable
 import Text.RawString.QQ
+import Types
 
-data FV = FI Int | FS String | FBlock [FCmd]
-  deriving (Show, Eq)
+push :: FV -> Interpreter ()
+push v = stack %= (v :)
 
-newtype FCmd = FCmd String
-  deriving (Show, Eq, IsString)
+-- collectBrackets :: Char -> Char -> ([FCmd] -> Interpreter ()) -> Interpreter ()
+-- collectBrackets opening closing f (St cmds s) =
+--   case collect cmds of
+--     (bef, aft) -> f bef (St aft s)
+--   where
+--     collect [] = error $ "Unclosed bracket " ++ [opening]
+--     collect (c : cmds)
+--       | c == FCmd [closing] = ([], cmds)
+--       -- collect (c:cmds) | c == opening = []
+--       | otherwise = case collect cmds of (bef, aft) -> (c : bef, aft)
 
-data St = St {_cmd :: [FCmd], _stack :: [FV]}
-  deriving (Show)
-
-push :: FV -> St -> St
-push v (St _c _s) = St _c (v : _s)
-
-collectBrackets :: Char -> Char -> ([FCmd] -> St -> St) -> St -> St
-collectBrackets opening closing f (St cmds s) =
-  case collect cmds of
-    (bef, aft) -> f bef (St aft s)
-  where
-    collect [] = error $ "Unclosed bracket " ++ [opening]
-    collect (c : cmds)
-      | c == FCmd [closing] = ([], cmds)
-      -- collect (c:cmds) | c == opening = []
-      | otherwise = case collect cmds of (bef, aft) -> (c : bef, aft)
-
-readers :: [(Char, String -> St -> St)]
+readers :: [(Char, String -> Interpreter ())]
 readers =
-  [ ('#', push . FI . read),
-    ('[', \[] -> collectBrackets '[' ']' (push . FBlock))
+  [ ('#', push . FI . read)
+  -- ('[', \[] -> collectBrackets '[' ']' (push . FBlock)),
+  -- (':', \[] -> collectBrackets ':' ';' _)
   ]
 
-builtins :: [(FCmd, St -> IO St)]
+getHead :: Interpreter FV
+getHead = stack %%= (\(x : xs) -> (x, xs))
+
+builtins :: [(FCmd, Interpreter ())]
 builtins =
-  [ ("dup", \(St cmds (x : xs)) -> return $ St cmds (x : x : xs)),
-    ("swap", \(St cmds (a : b : xs)) -> return $ St cmds (b : a : xs)),
-    ("+", \(St cmds (FI a : FI b : xs)) -> return $ St cmds (FI (a + b) : xs)),
-    ("print", \(St cmds (x : xs)) -> print x >> return (St cmds xs)),
-    ("call", \(St cmds (FBlock cs : xs)) -> return $ St (cs ++ cmds) xs),
+  [ ("dup", liftLst (\(x : xs) -> (x : x : xs))),
+    ("swap", liftLst (\(a : b : xs) -> (b : a : xs))),
+    ("+", liftOp2 @Int (+)),
+    ("print", getHead >>= liftIO . print),
+    ("call", getHead >>= \(FBlock vs) -> (commands %= (vs ++))),
+    --  \(St cmds (FBlock cs : xs)) -> return $ St (cs ++ cmds) xs
     ( "times",
-      \(St cmds (FBlock cs : FI i : xs)) ->
-        return (St (concat (replicate i cs) ++ cmds) xs)
+      do
+        FBlock bl <- getHead
+        FI i <- getHead
+        commands %= ((concat (replicate i bl)) ++)
     )
   ]
 
-run :: St -> IO [FV]
-run (St [] s) = return s
+run :: Interpreter ()
+-- run = use stack
 -- run st | traceShow st False = error "?"
-run (St ((FCmd cmd) : cmds) s) =
-  case lookup (head cmd) readers of
-    Just reader -> run $ reader (tail cmd) $ St cmds s
-    Nothing ->
-      case lookup (FCmd cmd) builtins of
-        Just f -> f (St cmds s) >>= run
-        Nothing -> error ("unknown command: " ++ cmd)
+run = do
+  cmds <- use commands
+  case cmds of
+    [] -> return ()
+    (FCmd cmd : cmds) -> do
+      commands .= cmds
+
+      case lookup (head cmd) readers of
+        Just reader -> reader (tail cmd) >> run
+        Nothing ->
+          case lookup (FCmd cmd) builtins of
+            Just f -> f >> run
+            Nothing -> error ("unknown command: " ++ cmd)
 
 runCode :: String -> IO [FV]
-runCode val = run (St (map FCmd $ words val) [])
+runCode val = _stack . snd <$> runStateT run defaultState {_commands = map FCmd $ words val}
 
 someFunc = do
   runCode
     [r|
-      
+
+: divides mod 0 eq? ;
+
   #0 #10 [
     #1 +
+
     dup print
+
+
   ] times
 
   |]

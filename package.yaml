@@ -26,6 +26,7 @@ dependencies:
 - bytestring
 - utf8-string
 - lens
+- mtl
 # - aeson
 - raw-strings-qq
 
