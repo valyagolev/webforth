@@ -1,0 +1,105 @@
+name:                webforth
+version:             0.1.0.0
+github:              "valyagolev/webforth"
+license:             BSD3
+author:              "Valentin Golev"
+maintainer:          "v.golev@gmail.com"
+copyright:           "2021 Valentin Golev"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/valyagolev/webforth#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+- text
+- bytestring
+- utf8-string
+- lens
+# - aeson
+- raw-strings-qq
+
+library:
+  source-dirs: src
+
+default-extensions:
+# ghc2021
+- EmptyCase
+- PostfixOperators
+- TupleSections
+# - ImportQualifiedPost
+- NamedFieldPuns
+- BangPatterns
+- BinaryLiterals
+- HexFloatLiterals
+- NumericUnderscores
+- GADTSyntax
+- RankNTypes
+- TypeApplications
+- PolyKinds
+# - StandaloneKindSignatures
+- ExistentialQuantification
+- TypeOperators
+- ConstraintKinds
+- ExplicitForAll
+- KindSignatures
+- NamedWildCards
+- ScopedTypeVariables
+- FlexibleContexts
+- FlexibleInstances
+- MultiParamTypeClasses
+- ConstrainedClassMethods
+- InstanceSigs
+- TypeSynonymInstances
+- DeriveDataTypeable
+- DeriveFoldable
+- DeriveFunctor
+- DeriveTraversable
+- StandaloneDeriving
+- EmptyDataDeriving
+- DeriveLift
+- GeneralisedNewtypeDeriving
+- DeriveGeneric
+# mine
+- OverloadedStrings
+- LambdaCase
+- RecordWildCards
+- FunctionalDependencies
+# - TypeFamilies
+- PartialTypeSignatures
+# - DataKinds
+
+ghc-options:
+- -Wno-partial-type-signatures
+
+executables:
+  webforth-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - webforth
+
+tests:
+  webforth-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - webforth
