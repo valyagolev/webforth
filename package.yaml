@@ -29,6 +29,7 @@ dependencies:
 - mtl
 # - aeson
 - raw-strings-qq
+- time
 
 library:
   source-dirs: src

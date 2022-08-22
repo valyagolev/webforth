@@ -25,7 +25,7 @@ liftOp :: (LiftableVal a, LiftableVal b) => (a -> b) -> Interpreter ()
 liftOp f = stack . _head %= (liftVal . f . unliftVal)
 
 liftOp2 :: (LiftableVal a, LiftableVal b, LiftableVal c) => (a -> b -> c) -> Interpreter ()
-liftOp2 f = stack %= \(a : b : xs) -> (liftVal $ f (unliftVal a) (unliftVal b)) : xs
+liftOp2 f = stack %= \(a : b : xs) -> (liftVal $ f (unliftVal b) (unliftVal a)) : xs
 
 liftLst :: ([FV] -> [FV]) -> Interpreter ()
 liftLst f = stack %= f

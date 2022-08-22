@@ -25,8 +25,11 @@ source-repository head
 
 library
   exposed-modules:
+      Compiler
+      Compiler.Types
       Lib
       Liftable
+      Parser
       Types
   other-modules:
       Paths_webforth
@@ -81,6 +84,7 @@ library
     , mtl
     , raw-strings-qq
     , text
+    , time
     , utf8-string
   default-language: Haskell2010
 
@@ -139,6 +143,7 @@ executable webforth-exe
     , mtl
     , raw-strings-qq
     , text
+    , time
     , utf8-string
     , webforth
   default-language: Haskell2010
@@ -199,6 +204,7 @@ test-suite webforth-test
     , mtl
     , raw-strings-qq
     , text
+    , time
     , utf8-string
     , webforth
   default-language: Haskell2010

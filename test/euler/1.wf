@@ -2,7 +2,7 @@
 
 
 
- #0 #0 #999 [
+#0 #0 #999 [
     #1 +
 
     dup #3 divides?
@@ -13,4 +13,4 @@
   
   ] times
 
-  #2 #1 divides? 
+  #2 #1 divides? drop drop

@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module Lib
-  ( someFunc,
-  )
-where
+module Lib where
 
 import Control.Applicative (Applicative (liftA2))
 import Control.Lens
@@ -13,10 +10,12 @@ import Data.Char (isAsciiLower, isDigit, ord)
 import Data.List (singleton)
 import qualified Data.Map.Strict as M
 import Data.String (IsString)
+import Data.Time (getCurrentTime)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Tuple (swap)
 import Debug.Trace
 import Liftable
-import Text.RawString.QQ
+import Text.RawString.QQ (r)
 import Types
 
 collectBrackets :: Char -> Char -> Interpreter () -> Interpreter ()
@@ -83,33 +82,54 @@ getHead = stack %%= (\(x : xs) -> (x, xs))
 push :: FV -> Interpreter ()
 push v = stack %= (v :)
 
+timeMillis :: IO Int
+timeMillis = round . (1000 *) <$> getPOSIXTime
+
 builtins :: [(FCmd, Interpreter ())]
 builtins =
   [ ("dup", liftLst (\(x : xs) -> (x : x : xs))),
     ("swap", liftLst (\(a : b : xs) -> (b : a : xs))),
     ("drop", liftLst tail),
+    ( "dip",
+      do
+        FBlock b <- getHead
+        v <- getHead
+        scheduleBlock $ b ++ [FPush v]
+    ),
+    ( "sip",
+      do
+        FBlock b <- getHead
+        v <- head <$> use stack
+        scheduleBlock $ b ++ [FPush v]
+    ),
     --
     ("push", getHead >>= \v -> (retStack %= (v :))),
     ("pop", retStack %%= (\(x : xs) -> (x, xs)) >>= push),
     --
     ("+", liftOp2 @Int (+)),
-    ("mod", liftOp2 @Int $ flip mod),
+    ("-", liftOp2 @Int (-)),
+    ("*", liftOp2 @Int (*)),
+    ("/", liftOp2 @Int div),
+    ("mod", liftOp2 @Int mod),
     ("eq?", liftOp2 @FV (==)),
     ("||", liftOp2 (||)),
-    ("<", liftOp2 @Int $ flip (<)),
-    (">", liftOp2 @Int $ flip (>)),
+    ("not", liftOp not),
+    ("<", liftOp2 @Int (<)),
+    (">", liftOp2 @Int (>)),
     --
     ("print", getHead >>= liftIO . print),
     ("dump-stack", use stack >>= liftIO . print),
     --
-    ("call", getHead >>= \(FBlock vs) -> runBlock vs),
+    ("now!", liftIO timeMillis >>= push . FI),
+    --
+    ("call", getHead >>= \(FBlock vs) -> scheduleBlock vs),
     --
     ( "choose",
       do
         FBlock b1 <- getHead
         FBlock b2 <- getHead
         FB c <- getHead
-        runBlock $ if c then b2 else b1
+        scheduleBlock $ if c then b2 else b1
     ),
     --  \(St cmds (FBlock cs : xs)) -> return $ St (cs ++ cmds) xs
     ( "times",
@@ -125,7 +145,7 @@ builtins =
 
         last <- localDefs . at mk %%= (,Just $ FBlock [FPush (FMarker mk), FCmd "escape"])
         retStack %= (FBlock [FPush (FMarker mk), FCmd "clearMarker"] :)
-        runBlock bl
+        scheduleBlock bl
 
         return ()
     ),
@@ -141,8 +161,8 @@ builtins =
     ("clearMarker", getHead >>= \(FMarker mk) -> (localDefs . at mk) .= Nothing)
   ]
 
-runBlock :: [FCmd] -> Interpreter ()
-runBlock xs = do
+scheduleBlock :: [FCmd] -> Interpreter ()
+scheduleBlock xs = do
   cont <- commands %%= (,xs)
   retStack %= (FBlock cont :)
 
@@ -156,9 +176,9 @@ step (FCmd cmd) = do
         Just f -> f
         Nothing -> do
           dfs <- use defs
-          case lookup (FCmd cmd) (dfs) of
+          case lookup (FCmd cmd) dfs of
             Just (FBlock xs) ->
-              runBlock xs
+              scheduleBlock xs
             Just v -> error ("can't run: " ++ cmd ++ " := " ++ show v)
             Nothing -> error ("unknown command: " ++ cmd)
 
@@ -187,34 +207,62 @@ stdlib :: String
 stdlib =
   [r|
 
-: dip      ( v bl -  v ) swap push call pop ; 
 : divides? ( n n - b )   mod #0 eq? ;
 : if       ( b bl - )    [ ] choose ;
 : while    ( bl - )      dup [ call ] dip swap [ while ] [ drop ] choose ;
+: forever  ( bl - )      dup [ call ] dip forever ;
+: loop     ( mk bl - )   swap [ forever ] escapable ;
+
+: time     ( bl - )      now! [ call ] dip now! swap - #:profile print print ;
 
 |]
 
-someFunc :: IO ()
-someFunc = do
+someFunc' :: IO ()
+someFunc' = do
   v <-
     runCode
       [r|
 
-#132132 print
+: ispalin ( n - ) 
+  dup #0 swap       (  n (m:=#0)  n )
+  [ 
+    dup #10 mod     (  n m        n (n%10) )
+    swap [ + ] dip  (  n (m+n%10) n )
+    #10 [ / ] sip swap [ * ] dip  
+                    (  n ((m+n%10) * 10) (n/10)  )
+    dup #0 eq? not
+  ] while
+  drop #10 / eq? ;
 
-#132132 dup ~ba dump-stack
+[ ispalin ] compile 
+(
+#123 ispalin print
+#12321 ispalin print
+#123321 ispalin print
 
-#0 > dump-stack
-[ #999999 print ] if
-dump-stack
-#66666 print
+[
 
-#13195 #0 #:exit [
-  #1 +
-  dup print
-  [ #1111 print :exit ] call
-  #666 print
-] escapable
+#0 #100 #100 [ #1 +
+  dup
+  dup #200 swap -
+  [
+
+    ~abab * dup ispalin 
+    [
+      ~adadbc
+      <
+      [ swap ] if
+      dump-stack
+      ~acdb
+      ] if
+    drop
+
+    #1 +
+  ] times
+  drop
+] times drop
+
+] time )
 
   |]
   putStrLn ""
