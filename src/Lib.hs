@@ -11,6 +11,7 @@ import Control.Lens
 import Control.Monad.State.Strict (MonadState (get), MonadTrans (lift), StateT (runStateT), liftIO, void)
 import Data.Char (isAsciiLower, isDigit, ord)
 import Data.List (singleton)
+import qualified Data.Map.Strict as M
 import Data.String (IsString)
 import Data.Tuple (swap)
 import Debug.Trace
@@ -38,16 +39,28 @@ collectBrackets opening closing interpret =
           (still, out) -> ((c : inner) ++ (FCmd [closing] : still), out)
       | otherwise = case collect cmds of (bef, aft) -> (c : bef, aft)
 
+readValue :: [Char] -> FV
+readValue (':' : xs) = FMarker xs
 readValue "false" = FB False
 readValue "true" = FB True
-readValue v = FI (read v)
+readValue v | all isDigit v = FI (read v)
+readValue v = error $ "Can't read: " ++ v
+
+runColon :: String -> Interpreter ()
+runColon [] = collectBrackets ':' ';' (use commands >>= \((FCmd name) : xs) -> defs %= ((FCmd name, FBlock xs) :))
+runColon mk =
+  use (localDefs . at mk)
+    >>= ( \case
+            Just (FBlock bl) -> commands %= (bl ++)
+            _ -> error ("not defined marker: :" ++ mk)
+        )
 
 readers :: [(Char, String -> Interpreter ())]
 readers =
   [ ('#', push . readValue),
     ('[', \[] -> collectBrackets '[' ']' (use commands >>= push . FBlock)),
     ('(', \[] -> collectBrackets '(' ')' (return ())),
-    (':', \[] -> collectBrackets ':' ';' (use commands >>= \((FCmd name) : xs) -> defs %= ((FCmd name, FBlock xs) :))),
+    (':', runColon),
     ('~', tilde)
   ]
 
@@ -89,7 +102,6 @@ builtins =
     ("dump-stack", use stack >>= liftIO . print),
     --
     ("call", getHead >>= \(FBlock vs) -> runBlock vs),
-    -- ("escape", commands .= []),
     --
     ( "choose",
       do
@@ -104,6 +116,17 @@ builtins =
         FBlock bl <- getHead
         FI i <- getHead
         commands %= ((concat (replicate i bl)) ++)
+    ),
+    ( "loop",
+      do
+        FBlock bl <- getHead
+        FMarker mk <- getHead
+
+        last <- localDefs . at mk %%= (,Just $ FBlock [FCmd "escape"])
+        runBlock $ cycle bl
+        localDefs . at mk .= last
+
+        return ()
     )
   ]
 
@@ -121,6 +144,7 @@ run = do
   cmds <- use commands
   case cmds of
     [] -> return () -- void $ liftIO $ putStrLn "RET"
+    (FCmd "escape" : _) -> return ()
     (FCmd cmd : cmds) -> do
       commands .= cmds
 
@@ -136,7 +160,7 @@ run = do
             Just f -> f >> run
             Nothing -> do
               dfs <- use defs
-              case lookup (FCmd cmd) dfs of
+              case lookup (FCmd cmd) (dfs) of
                 Just (FBlock xs) ->
                   runBlock xs >> run
                 Just v -> error ("can't run: " ++ cmd ++ " := " ++ show v)
@@ -166,6 +190,11 @@ someFunc = do
     runCode
       [r|
 
+#13195 #0 #:exit [
+  #1 +
+  dup print
+  [ #1111 print :exit ] call
+] loop
 
   |]
   putStrLn ""

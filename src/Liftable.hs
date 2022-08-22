@@ -19,6 +19,7 @@ instance LiftableVal FV where
 instance LiftableVal Bool where
   liftVal = FB
   unliftVal (FB i) = i
+  unliftVal v = error ("??? " ++ show v)
 
 liftOp :: (LiftableVal a, LiftableVal b) => (a -> b) -> Interpreter ()
 liftOp f = stack . _head %= (liftVal . f . unliftVal)
