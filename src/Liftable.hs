@@ -10,6 +10,15 @@ class LiftableVal v where
 instance LiftableVal Int where
   liftVal = FI
   unliftVal (FI i) = i
+  unliftVal v = error ("??? " ++ show v)
+
+instance LiftableVal FV where
+  liftVal = id
+  unliftVal = id
+
+instance LiftableVal Bool where
+  liftVal = FB
+  unliftVal (FB i) = i
 
 liftOp :: (LiftableVal a, LiftableVal b) => (a -> b) -> Interpreter ()
 liftOp f = stack . _head %= (liftVal . f . unliftVal)

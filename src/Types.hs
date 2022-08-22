@@ -20,12 +20,13 @@ newtype FCmd = FCmd String
 
 data St = St
   { _commands :: [FCmd],
-    _stack :: [FV]
-    -- , _words :: [(FCmd, FV)]
+    _stack :: [FV],
+    _defs :: [(FCmd, FV)]
   }
   deriving (Show)
 
-defaultState = St [] []
+defaultState :: St
+defaultState = St [] [] []
 
 type Interpreter a = StateT St IO a
 
