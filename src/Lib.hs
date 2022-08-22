@@ -23,6 +23,7 @@ collectBrackets :: Char -> Char -> Interpreter () -> Interpreter ()
 collectBrackets opening closing interpret =
   do
     cmds <- use commands
+    -- liftIO $ print cmds
     case collect cmds of
       (bef, aft) -> do
         commands .= bef
@@ -48,12 +49,12 @@ readValue v = error $ "Can't read: " ++ v
 
 runColon :: String -> Interpreter ()
 runColon [] = collectBrackets ':' ';' (use commands >>= \((FCmd name) : xs) -> defs %= ((FCmd name, FBlock xs) :))
-runColon mk =
-  use (localDefs . at mk)
-    >>= ( \case
-            Just (FBlock bl) -> commands %= (bl ++)
-            _ -> error ("not defined marker: :" ++ mk)
-        )
+runColon mk = do
+  val <- use (localDefs . at mk)
+  -- get >>= liftIO . print
+  case val of
+    Just (FBlock bl) -> commands %= (bl ++)
+    _ -> error ("not defined marker: :" ++ mk)
 
 readers :: [(Char, String -> Interpreter ())]
 readers =
@@ -117,62 +118,70 @@ builtins =
         FI i <- getHead
         commands %= ((concat (replicate i bl)) ++)
     ),
-    ( "loop",
+    ( "escapable",
       do
         FBlock bl <- getHead
         FMarker mk <- getHead
 
-        last <- localDefs . at mk %%= (,Just $ FBlock [FCmd "escape"])
-        runBlock $ cycle bl
-        localDefs . at mk .= last
+        last <- localDefs . at mk %%= (,Just $ FBlock [FPush (FMarker mk), FCmd "escape"])
+        retStack %= (FBlock [FPush (FMarker mk), FCmd "clearMarker"] :)
+        runBlock bl
 
         return ()
-    )
+    ),
+    ( "escape",
+      do
+        FMarker mk <- getHead
+
+        commands .= []
+        retStack %= dropWhile (/= FBlock [FPush (FMarker mk), FCmd "clearMarker"])
+
+        return ()
+    ),
+    ("clearMarker", getHead >>= \(FMarker mk) -> (localDefs . at mk) .= Nothing)
   ]
 
 runBlock :: [FCmd] -> Interpreter ()
 runBlock xs = do
   cont <- commands %%= (,xs)
-  run
-  commands .= cont
+  retStack %= (FBlock cont :)
+
+step :: FCmd -> Interpreter ()
+step (FPush v) = push v
+step (FCmd cmd) = do
+  case lookup (head cmd) readers of
+    Just reader -> reader (tail cmd)
+    Nothing ->
+      case lookup (FCmd cmd) builtins of
+        Just f -> f
+        Nothing -> do
+          dfs <- use defs
+          case lookup (FCmd cmd) (dfs) of
+            Just (FBlock xs) ->
+              runBlock xs
+            Just v -> error ("can't run: " ++ cmd ++ " := " ++ show v)
+            Nothing -> error ("unknown command: " ++ cmd)
 
 run :: Interpreter ()
--- run = use stack
--- run st | traceShow st False = error "?"
 run = do
   -- get >>= liftIO . print
-  cmds <- use commands
-  case cmds of
-    [] -> return () -- void $ liftIO $ putStrLn "RET"
-    (FCmd "escape" : _) -> return ()
-    (FCmd cmd : cmds) -> do
-      commands .= cmds
-
-      -- st <- use stack
-      -- st <- get
-      -- liftIO $ putStrLn $ show st
-      -- liftIO $ putStr $ cmd ++ " -> "
-
-      case lookup (head cmd) readers of
-        Just reader -> reader (tail cmd) >> run
-        Nothing ->
-          case lookup (FCmd cmd) builtins of
-            Just f -> f >> run
-            Nothing -> do
-              dfs <- use defs
-              case lookup (FCmd cmd) (dfs) of
-                Just (FBlock xs) ->
-                  runBlock xs >> run
-                Just v -> error ("can't run: " ++ cmd ++ " := " ++ show v)
-                Nothing -> error ("unknown command: " ++ cmd)
+  cmd <-
+    commands %%= \case
+      [] -> (Nothing, [])
+      (cmd : xs) -> (Just cmd, xs)
+  case cmd of
+    Nothing -> do
+      n <-
+        retStack %%= \case
+          [] -> (Nothing, [])
+          (FBlock bl : vs) -> (Just bl, vs)
+      case n of
+        Nothing -> return ()
+        Just cont -> commands .= cont >> run
+    Just cmd -> step cmd >> run
 
 runCode :: String -> IO [FV]
 runCode val = _stack . snd <$> runStateT run defaultState {_commands = map FCmd $ words (stdlib ++ val)}
-
--- #1 #2 [ #3 ] dip
--- #1 | #2
--- #1 #3 | #2
--- #1 #3 #2
 
 stdlib :: String
 stdlib =
@@ -185,16 +194,27 @@ stdlib =
 
 |]
 
+someFunc :: IO ()
 someFunc = do
   v <-
     runCode
       [r|
 
+#132132 print
+
+#132132 dup ~ba dump-stack
+
+#0 > dump-stack
+[ #999999 print ] if
+dump-stack
+#66666 print
+
 #13195 #0 #:exit [
   #1 +
   dup print
   [ #1111 print :exit ] call
-] loop
+  #666 print
+] escapable
 
   |]
   putStrLn ""
